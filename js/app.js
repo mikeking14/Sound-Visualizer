@@ -3,9 +3,6 @@ import { AppState } from './ui/state.js';
 import { AudioEngine } from './audio/audio-engine.js';
 import { FeatureExtractor } from './audio/feature-extractor.js';
 import { VizManager } from './viz/viz-manager.js';
-import { WaveformPanel } from './viz/waveform.js';
-import { SpectrumPanel } from './viz/spectrum.js';
-import { LineChartPanel, HeatmapPanel } from './viz/base-panel.js';
 import { Scene3DPanel } from './viz/scene3d.js';
 import { AudioEditor } from './editor/editor.js';
 import { AudioExporter } from './editor/export.js';
@@ -17,6 +14,7 @@ class App {
     this.extractor = new FeatureExtractor(this.state);
     this.vizManager = new VizManager(this.state, this.engine);
     this.editor = new AudioEditor(this.state, this.engine);
+    this.scene3d = null;
 
     this._initUI();
     this._initViz();
@@ -99,51 +97,48 @@ class App {
   _initViz() {
     this.vizManager.init('viz-container');
 
-    // Waveform (full width, interactive)
-    this.vizManager.register(new WaveformPanel(this.state, this.engine));
+    // Only 3D scene — no 2D panels
+    this.scene3d = new Scene3DPanel(this.state);
+    this.vizManager.registerThreePanel(this.scene3d);
 
-    // Live spectrum
-    this.vizManager.register(new SpectrumPanel(this.state));
+    // Build instrument isolation controls in the panel header
+    this._buildBandControls();
+  }
 
-    // Spectrogram
-    this.vizManager.register(new HeatmapPanel('spectrogram', 'Spectrogram', this.state,
-      'spectrogram', null, 'inferno', { logScale: true }));
+  _buildBandControls() {
+    const header = this.scene3d.wrapper.querySelector('.viz-panel-header');
 
-    // Feature line charts
-    this.vizManager.register(new LineChartPanel('spectral-centroid', 'Spectral Centroid', this.state,
-      'spectralCentroid', 'rgb(255, 170, 50)', 'Hz'));
-    this.vizManager.register(new LineChartPanel('spectral-bandwidth', 'Spectral Bandwidth', this.state,
-      'spectralBandwidth', 'rgb(130, 220, 255)', 'Hz'));
-    this.vizManager.register(new LineChartPanel('spectral-rolloff', 'Spectral Rolloff', this.state,
-      'spectralRolloff', 'rgb(255, 100, 200)', 'Hz'));
-    this.vizManager.register(new LineChartPanel('spectral-flux', 'Spectral Flux', this.state,
-      'spectralFlux', 'rgb(100, 255, 150)', 'Flux'));
-    this.vizManager.register(new LineChartPanel('zcr', 'Zero-Crossing Rate', this.state,
-      'zcr', 'rgb(255, 255, 100)', 'Rate'));
-    this.vizManager.register(new LineChartPanel('harmonicity', 'Harmonicity', this.state,
-      'harmonicity', 'rgb(180, 130, 255)', 'Score'));
-    this.vizManager.register(new LineChartPanel('loudness', 'Loudness', this.state,
-      'loudness', 'rgb(255, 80, 80)', 'dB'));
-    this.vizManager.register(new LineChartPanel('rms', 'RMS Energy', this.state,
-      'rms', 'rgb(50, 200, 255)', 'RMS'));
+    const controls = document.createElement('div');
+    controls.className = 'band-controls';
 
-    // Chromagram heatmap
-    const chromaLabels = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    this.vizManager.register(new HeatmapPanel('chromagram', 'Chromagram (Pitch Classes)', this.state,
-      'chromagram', chromaLabels, 'magma'));
+    // Band buttons
+    const bands = [
+      { key: 'all', label: 'All' },
+      { key: 'bass', label: 'Bass (20-250Hz)' },
+      { key: 'mids', label: 'Mids (250Hz-4kHz)' },
+      { key: 'highs', label: 'Highs (4k-20kHz)' },
+    ];
 
-    // MFCC heatmap
-    this.vizManager.register(new HeatmapPanel('mfcc', 'MFCCs', this.state,
-      'mfcc', null, 'viridis'));
+    bands.forEach(({ key, label }) => {
+      const btn = document.createElement('button');
+      btn.className = 'band-btn' + (key === 'all' ? ' active' : '');
+      btn.textContent = label;
+      btn.addEventListener('click', () => this.scene3d.setBand(key));
+      controls.appendChild(btn);
+      this.scene3d._bandButtons[key] = btn;
+    });
 
-    // Stereo features (if available, rendered conditionally)
-    this.vizManager.register(new LineChartPanel('stereo-width', 'Stereo Width', this.state,
-      'stereoWidth', 'rgb(255, 200, 50)', 'Width'));
-    this.vizManager.register(new LineChartPanel('phase-correlation', 'Phase Correlation', this.state,
-      'phaseCorrelation', 'rgb(50, 255, 200)', 'Corr'));
+    // Auto-rotate toggle
+    const rotateBtn = document.createElement('button');
+    rotateBtn.className = 'band-btn rotate-btn';
+    rotateBtn.textContent = 'Auto-Rotate';
+    rotateBtn.addEventListener('click', () => {
+      rotateBtn.classList.toggle('active');
+      this.scene3d.setAutoRotate(rotateBtn.classList.contains('active'));
+    });
+    controls.appendChild(rotateBtn);
 
-    // 3D scene
-    this.vizManager.registerThreePanel(new Scene3DPanel(this.state));
+    header.appendChild(controls);
   }
 
   _bindEvents() {
@@ -171,6 +166,10 @@ class App {
             this._exportWAV();
           }
           break;
+        case 'Digit1': this.scene3d.setBand('all'); break;
+        case 'Digit2': this.scene3d.setBand('bass'); break;
+        case 'Digit3': this.scene3d.setBand('mids'); break;
+        case 'Digit4': this.scene3d.setBand('highs'); break;
       }
     });
   }

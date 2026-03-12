@@ -226,36 +226,24 @@
     /* Main content */
     #main-content { display: none; }
 
-    /* Viz container */
+    /* Viz container — full page for 3D */
     #viz-container {
-      padding: 12px;
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 48px);
     }
 
     /* Panel styles */
     .viz-panel {
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
+      background: var(--bg-primary);
       overflow: hidden;
-      min-height: 160px;
-    }
-    .viz-panel-waveform {
-      grid-column: 1 / -1;
-      min-height: 140px;
-    }
-    .viz-panel-spectrum {
-      min-height: 180px;
-    }
-    .viz-panel-spectrogram {
-      grid-column: 1 / -1;
-      min-height: 200px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
     }
     .viz-panel-3d {
-      grid-column: 1 / -1;
-      min-height: 350px;
+      flex: 1;
     }
 
     .viz-panel-header {
@@ -265,6 +253,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-shrink: 0;
     }
     .viz-panel-title {
       font-size: 12px;
@@ -276,8 +265,8 @@
 
     .viz-canvas-container {
       width: 100%;
-      height: calc(100% - 30px);
-      min-height: 120px;
+      flex: 1;
+      min-height: 0;
     }
     .viz-canvas-container canvas {
       display: block;
@@ -285,25 +274,47 @@
       height: 100%;
     }
     .viz-three-container {
-      min-height: 320px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* Band controls */
+    .band-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .band-btn {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 3px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .band-btn:hover {
+      border-color: var(--accent);
+      color: var(--text-primary);
+    }
+    .band-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .rotate-btn.active {
+      background: rgba(66, 135, 245, 0.3);
+      border-color: var(--accent);
+      color: var(--accent);
     }
 
     /* Responsive */
-    @media (max-width: 900px) {
-      #viz-container {
-        grid-template-columns: 1fr;
-      }
-      .viz-panel-waveform,
-      .viz-panel-spectrogram,
-      .viz-panel-3d {
-        grid-column: 1;
-      }
-    }
-
     @media (max-width: 600px) {
       .toolbar { padding: 6px 8px; gap: 6px; }
       .btn { padding: 4px 8px; font-size: 12px; }
-      #viz-container { padding: 6px; gap: 6px; }
+      .band-btn { padding: 2px 6px; font-size: 10px; }
     }
   </style>
 </head>
