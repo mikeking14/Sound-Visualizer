@@ -1,0 +1,2296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sound Visualizer — 3D Audio Analysis</title>
+  <style>
+    :root {
+      --bg-primary: #0a0a1a;
+      --bg-secondary: #12122a;
+      --bg-panel: #1a1a2e;
+      --bg-hover: #252545;
+      --text-primary: #e0e0f0;
+      --text-secondary: #8888aa;
+      --accent: #4287f5;
+      --accent-glow: rgba(66, 135, 245, 0.3);
+      --danger: #ff4444;
+      --success: #44ff88;
+      --border: #2a2a4a;
+      --radius: 8px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* Header / Toolbar */
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      backdrop-filter: blur(10px);
+    }
+
+    .toolbar-section {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 28px;
+      background: var(--border);
+    }
+
+    .app-title {
+      font-size: 16px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #4287f5, #42f5a7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-right: 8px;
+    }
+
+    /* Buttons */
+    .btn {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); }
+    .btn-primary:hover { background: #5a9fff; }
+    .btn-danger { border-color: var(--danger); color: var(--danger); }
+    .btn-danger:hover { background: rgba(255, 68, 68, 0.15); }
+
+    .btn-icon {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    /* File input */
+    .file-input-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #file-input { display: none; }
+    #file-name {
+      font-size: 13px;
+      color: var(--text-secondary);
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Time display */
+    .time-display {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 14px;
+      color: var(--text-secondary);
+      min-width: 100px;
+      text-align: center;
+    }
+    .time-display span { color: var(--text-primary); }
+
+    /* Volume */
+    .volume-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 80px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    /* Selection info */
+    #selection-info {
+      display: none;
+      font-size: 12px;
+      color: var(--accent);
+      padding: 3px 8px;
+      background: var(--accent-glow);
+      border-radius: 4px;
+    }
+
+    /* Progress bar */
+    #progress-container {
+      display: none;
+      width: 100%;
+      height: 3px;
+      background: var(--bg-primary);
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 200;
+    }
+    #progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--success));
+      transition: width 0.1s;
+      border-radius: 0 2px 2px 0;
+    }
+
+    /* Drop zone */
+    #drop-zone {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-primary);
+      z-index: 50;
+      transition: all 0.3s;
+    }
+    #drop-zone.active {
+      background: rgba(66, 135, 245, 0.08);
+    }
+    .drop-zone-content {
+      text-align: center;
+      padding: 60px;
+      border: 2px dashed var(--border);
+      border-radius: 20px;
+      max-width: 500px;
+      transition: border-color 0.3s;
+    }
+    #drop-zone.active .drop-zone-content {
+      border-color: var(--accent);
+    }
+    .drop-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      opacity: 0.3;
+    }
+    .drop-title {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .drop-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+    .drop-formats {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Main content */
+    #main-content { display: none; }
+
+    /* Viz container */
+    #viz-container {
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* Panel styles */
+    .viz-panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      min-height: 160px;
+    }
+    .viz-panel-waveform {
+      grid-column: 1 / -1;
+      min-height: 140px;
+    }
+    .viz-panel-spectrum {
+      min-height: 180px;
+    }
+    .viz-panel-spectrogram {
+      grid-column: 1 / -1;
+      min-height: 200px;
+    }
+    .viz-panel-3d {
+      grid-column: 1 / -1;
+      min-height: 350px;
+    }
+
+    .viz-panel-header {
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .viz-panel-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .viz-canvas-container {
+      width: 100%;
+      height: calc(100% - 30px);
+      min-height: 120px;
+    }
+    .viz-canvas-container canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .viz-three-container {
+      min-height: 320px;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      #viz-container {
+        grid-template-columns: 1fr;
+      }
+      .viz-panel-waveform,
+      .viz-panel-spectrogram,
+      .viz-panel-3d {
+        grid-column: 1;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .toolbar { padding: 6px 8px; gap: 6px; }
+      .btn { padding: 4px 8px; font-size: 12px; }
+      #viz-container { padding: 6px; gap: 6px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="progress-container"><div id="progress-bar"></div></div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <span class="app-title">SoundViz 3D</span>
+
+  <div class="toolbar-section">
+    <label class="btn file-input-label" for="file-input">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+      Open
+    </label>
+    <input type="file" id="file-input" accept="audio/*,.wav,.mp3,.ogg,.flac,.aac,.m4a,.wma,.aiff">
+    <span id="file-name">No file loaded</span>
+  </div>
+
+  <div class="toolbar-divider"></div>
+
+  <div class="toolbar-section">
+    <button class="btn btn-icon" id="btn-skip-back" title="Return to start">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+    </button>
+    <button class="btn btn-icon btn-primary" id="btn-play" title="Play/Pause (Space)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <button class="btn btn-icon" id="btn-stop" title="Stop">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+    </button>
+  </div>
+
+  <div class="time-display">
+    <span id="time-current">0:00</span> / <span id="time-total">0:00</span>
+  </div>
+
+  <div class="toolbar-divider"></div>
+
+  <div class="toolbar-section volume-control">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
+    <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+  </div>
+
+  <div class="toolbar-divider"></div>
+
+  <div class="toolbar-section">
+    <button class="btn" id="btn-crop" title="Crop to selection">Crop</button>
+    <button class="btn btn-danger" id="btn-delete-sel" title="Delete selection">Delete</button>
+    <button class="btn" id="btn-separate" title="Harmonic/Percussive separation">Separate</button>
+    <button class="btn" id="btn-denoise" title="Spectral gate noise reduction">Denoise</button>
+    <button class="btn" id="btn-export" title="Export as WAV (Ctrl+E)">Export WAV</button>
+  </div>
+
+  <span id="selection-info"></span>
+</div>
+
+<!-- Drop Zone -->
+<div id="drop-zone">
+  <div class="drop-zone-content">
+    <div class="drop-icon">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+      </svg>
+    </div>
+    <div class="drop-title">Drop an audio file here</div>
+    <div class="drop-subtitle">or click to browse</div>
+    <label class="btn btn-primary" for="file-input" style="display:inline-flex; cursor:pointer; padding: 10px 24px; font-size: 14px;">
+      Choose Audio File
+    </label>
+    <div class="drop-formats" style="margin-top: 20px;">
+      Supports: WAV, MP3, OGG, FLAC, AAC, M4A, AIFF, WMA
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div id="main-content">
+  <div id="viz-container"></div>
+</div>
+
+<!-- Meyda (audio feature extraction) -->
+<script src="https://cdn.jsdelivr.net/npm/meyda@5.4.2/dist/web/meyda.min.js"></script>
+
+<!-- Import map for ES modules -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+// ============================================================
+// js/ui/state.js — Centralized reactive state
+// ============================================================
+
+class AppState {
+  constructor() {
+    this._listeners = {};
+    this._state = {
+      audioBuffer: null,
+      fileName: '',
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+      zoomLevel: 1,
+      scrollOffset: 0,
+      selection: null,
+      features: null,
+      extractionProgress: 0,
+      activePanel: null,
+      panelVisibility: {},
+      theme: 'dark',
+      channelCount: 1,
+      sampleRate: 44100,
+    };
+  }
+
+  get(key) {
+    return this._state[key];
+  }
+
+  set(key, value) {
+    const old = this._state[key];
+    this._state[key] = value;
+    this._emit(key, value, old);
+  }
+
+  update(obj) {
+    for (const [key, value] of Object.entries(obj)) {
+      this._state[key] = value;
+    }
+    for (const key of Object.keys(obj)) {
+      this._emit(key, this._state[key]);
+    }
+  }
+
+  on(key, fn) {
+    if (!this._listeners[key]) this._listeners[key] = [];
+    this._listeners[key].push(fn);
+    return () => this.off(key, fn);
+  }
+
+  off(key, fn) {
+    if (!this._listeners[key]) return;
+    this._listeners[key] = this._listeners[key].filter(f => f !== fn);
+  }
+
+  _emit(key, value, old) {
+    if (!this._listeners[key]) return;
+    for (const fn of this._listeners[key]) {
+      fn(value, old);
+    }
+  }
+}
+
+// ============================================================
+// js/audio/audio-engine.js — Audio loading, decoding, playback
+// ============================================================
+
+class AudioEngine {
+  constructor(state) {
+    this.state = state;
+    this.ctx = null;
+    this.sourceNode = null;
+    this.analyserNode = null;
+    this.gainNode = null;
+    this.startTime = 0;
+    this.pauseTime = 0;
+    this._animFrame = null;
+  }
+
+  _ensureContext() {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.analyserNode = this.ctx.createAnalyser();
+      this.analyserNode.fftSize = 4096;
+      this.analyserNode.smoothingTimeConstant = 0.8;
+      this.gainNode = this.ctx.createGain();
+      this.gainNode.connect(this.analyserNode);
+      this.analyserNode.connect(this.ctx.destination);
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  async loadFile(file) {
+    this._ensureContext();
+    this.stop();
+    const arrayBuffer = await file.arrayBuffer();
+    const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+    this.state.update({
+      audioBuffer,
+      fileName: file.name,
+      duration: audioBuffer.duration,
+      channelCount: audioBuffer.numberOfChannels,
+      sampleRate: audioBuffer.sampleRate,
+      currentTime: 0,
+      selection: null,
+    });
+    this.pauseTime = 0;
+    return audioBuffer;
+  }
+
+  play(startFrom) {
+    this._ensureContext();
+    const buffer = this.state.get('audioBuffer');
+    if (!buffer) return;
+
+    this.stop(true);
+
+    this.sourceNode = this.ctx.createBufferSource();
+    this.sourceNode.buffer = buffer;
+    this.sourceNode.connect(this.gainNode);
+
+    const offset = startFrom !== undefined ? startFrom : this.pauseTime;
+    this.startTime = this.ctx.currentTime - offset;
+    this.sourceNode.start(0, offset);
+    this.state.set('isPlaying', true);
+
+    this.sourceNode.onended = () => {
+      if (this.state.get('isPlaying')) {
+        this.stop();
+      }
+    };
+
+    this._startTimeUpdate();
+  }
+
+  pause() {
+    if (!this.state.get('isPlaying')) return;
+    this.pauseTime = this.ctx.currentTime - this.startTime;
+    this._stopSource();
+    this.state.set('isPlaying', false);
+    this._stopTimeUpdate();
+  }
+
+  stop(internal) {
+    this._stopSource();
+    this.pauseTime = 0;
+    if (!internal) {
+      this.state.update({ isPlaying: false, currentTime: 0 });
+    }
+    this._stopTimeUpdate();
+  }
+
+  seek(time) {
+    const duration = this.state.get('duration');
+    time = Math.max(0, Math.min(time, duration));
+    this.pauseTime = time;
+    this.state.set('currentTime', time);
+    if (this.state.get('isPlaying')) {
+      this.play(time);
+    }
+  }
+
+  setVolume(vol) {
+    this._ensureContext();
+    this.gainNode.gain.value = vol;
+  }
+
+  getAnalyserData() {
+    if (!this.analyserNode) return null;
+    const data = new Float32Array(this.analyserNode.frequencyBinCount);
+    this.analyserNode.getFloatFrequencyData(data);
+    return data;
+  }
+
+  getTimeDomainData() {
+    if (!this.analyserNode) return null;
+    const data = new Float32Array(this.analyserNode.fftSize);
+    this.analyserNode.getFloatTimeDomainData(data);
+    return data;
+  }
+
+  _stopSource() {
+    if (this.sourceNode) {
+      try { this.sourceNode.stop(); } catch (e) {}
+      this.sourceNode.disconnect();
+      this.sourceNode = null;
+    }
+  }
+
+  _startTimeUpdate() {
+    this._stopTimeUpdate();
+    const update = () => {
+      if (this.state.get('isPlaying') && this.ctx) {
+        const t = this.ctx.currentTime - this.startTime;
+        const dur = this.state.get('duration');
+        this.state.set('currentTime', Math.min(t, dur));
+        if (t >= dur) {
+          this.stop();
+          return;
+        }
+      }
+      this._animFrame = requestAnimationFrame(update);
+    };
+    this._animFrame = requestAnimationFrame(update);
+  }
+
+  _stopTimeUpdate() {
+    if (this._animFrame) {
+      cancelAnimationFrame(this._animFrame);
+      this._animFrame = null;
+    }
+  }
+}
+
+// ============================================================
+// js/audio/feature-extractor.js — Offline feature extraction
+// ============================================================
+
+class FeatureExtractor {
+  constructor(state) {
+    this.state = state;
+  }
+
+  async extract(audioBuffer, onProgress) {
+    const sampleRate = audioBuffer.sampleRate;
+    const bufferSize = 2048;
+    const hopSize = 1024;
+    const mono = this._getMono(audioBuffer);
+    const totalFrames = Math.floor((mono.length - bufferSize) / hopSize) + 1;
+
+    const features = {
+      sampleRate,
+      bufferSize,
+      hopSize,
+      totalFrames,
+      duration: audioBuffer.duration,
+      rms: new Float32Array(totalFrames),
+      spectralCentroid: new Float32Array(totalFrames),
+      spectralBandwidth: new Float32Array(totalFrames),
+      spectralRolloff: new Float32Array(totalFrames),
+      spectralFlux: new Float32Array(totalFrames),
+      zcr: new Float32Array(totalFrames),
+      loudness: new Float32Array(totalFrames),
+      harmonicity: new Float32Array(totalFrames),
+      spectrogram: [],
+      chromagram: [],
+      mfcc: [],
+      stereoWidth: null,
+      phaseCorrelation: null,
+      waveformPeaks: null,
+    };
+
+    if (audioBuffer.numberOfChannels >= 2) {
+      features.stereoWidth = new Float32Array(totalFrames);
+      features.phaseCorrelation = new Float32Array(totalFrames);
+    }
+
+    features.waveformPeaks = this._computeWaveformPeaks(mono, 4000);
+
+    let prevSpectrum = null;
+    const hasMeyda = typeof Meyda !== 'undefined';
+
+    for (let i = 0; i < totalFrames; i++) {
+      const start = i * hopSize;
+      const frame = mono.slice(start, start + bufferSize);
+
+      if (hasMeyda) {
+        try {
+          const result = Meyda.extract(
+            ['rms', 'spectralCentroid', 'spectralSpread', 'spectralRolloff',
+             'spectralFlux', 'zcr', 'loudness', 'chroma', 'mfcc',
+             'amplitudeSpectrum'],
+            frame,
+            { sampleRate, bufferSize, numberOfMFCCCoefficients: 13 }
+          );
+
+          if (result) {
+            features.rms[i] = result.rms || 0;
+            features.spectralCentroid[i] = result.spectralCentroid || 0;
+            features.spectralBandwidth[i] = result.spectralSpread || 0;
+            features.spectralRolloff[i] = result.spectralRolloff || 0;
+            features.spectralFlux[i] = result.spectralFlux || 0;
+            features.zcr[i] = result.zcr || 0;
+            features.loudness[i] = result.loudness ? result.loudness.total : 0;
+
+            if (result.amplitudeSpectrum) {
+              features.spectrogram.push(Array.from(result.amplitudeSpectrum));
+            }
+            if (result.chroma) {
+              features.chromagram.push(Array.from(result.chroma));
+            }
+            if (result.mfcc) {
+              features.mfcc.push(Array.from(result.mfcc));
+            }
+          }
+        } catch (e) {
+          this._extractFrameCustom(frame, features, i, prevSpectrum, sampleRate, bufferSize);
+        }
+      } else {
+        this._extractFrameCustom(frame, features, i, prevSpectrum, sampleRate, bufferSize);
+      }
+
+      features.harmonicity[i] = this._computeHarmonicity(frame, sampleRate);
+
+      if (audioBuffer.numberOfChannels >= 2) {
+        const left = audioBuffer.getChannelData(0).slice(start, start + bufferSize);
+        const right = audioBuffer.getChannelData(1).slice(start, start + bufferSize);
+        features.stereoWidth[i] = this._computeStereoWidth(left, right);
+        features.phaseCorrelation[i] = this._computePhaseCorrelation(left, right);
+      }
+
+      if (features.spectrogram.length > 0) {
+        prevSpectrum = features.spectrogram[features.spectrogram.length - 1];
+      }
+
+      if (i % 100 === 0) {
+        const progress = (i / totalFrames) * 100;
+        if (onProgress) onProgress(progress);
+        this.state.set('extractionProgress', progress);
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    if (onProgress) onProgress(100);
+    this.state.set('extractionProgress', 100);
+    return features;
+  }
+
+  _extractFrameCustom(frame, features, i, prevSpectrum, sampleRate, bufferSize) {
+    const spectrum = this._fft(frame);
+    features.spectrogram.push(Array.from(spectrum));
+
+    let sumSq = 0;
+    for (let j = 0; j < frame.length; j++) sumSq += frame[j] * frame[j];
+    features.rms[i] = Math.sqrt(sumSq / frame.length);
+
+    let crossings = 0;
+    for (let j = 1; j < frame.length; j++) {
+      if ((frame[j] >= 0) !== (frame[j - 1] >= 0)) crossings++;
+    }
+    features.zcr[i] = crossings / (frame.length - 1);
+
+    let weightedSum = 0, totalEnergy = 0;
+    const freqPerBin = sampleRate / bufferSize;
+    for (let j = 0; j < spectrum.length; j++) {
+      weightedSum += j * freqPerBin * spectrum[j];
+      totalEnergy += spectrum[j];
+    }
+    features.spectralCentroid[i] = totalEnergy > 0 ? weightedSum / totalEnergy : 0;
+
+    const centroid = features.spectralCentroid[i];
+    let spreadSum = 0;
+    for (let j = 0; j < spectrum.length; j++) {
+      const freq = j * freqPerBin;
+      spreadSum += spectrum[j] * (freq - centroid) * (freq - centroid);
+    }
+    features.spectralBandwidth[i] = totalEnergy > 0 ? Math.sqrt(spreadSum / totalEnergy) : 0;
+
+    const threshold = totalEnergy * 0.85;
+    let cumEnergy = 0;
+    features.spectralRolloff[i] = sampleRate / 2;
+    for (let j = 0; j < spectrum.length; j++) {
+      cumEnergy += spectrum[j];
+      if (cumEnergy >= threshold) {
+        features.spectralRolloff[i] = j * freqPerBin;
+        break;
+      }
+    }
+
+    if (prevSpectrum) {
+      let flux = 0;
+      for (let j = 0; j < spectrum.length; j++) {
+        const diff = spectrum[j] - (prevSpectrum[j] || 0);
+        flux += diff * diff;
+      }
+      features.spectralFlux[i] = Math.sqrt(flux);
+    }
+
+    features.loudness[i] = features.rms[i] > 0 ? 20 * Math.log10(features.rms[i]) + 80 : 0;
+
+    const chroma = new Array(12).fill(0);
+    for (let j = 1; j < spectrum.length; j++) {
+      const freq = j * freqPerBin;
+      if (freq < 20 || freq > 8000) continue;
+      const midi = 12 * Math.log2(freq / 440) + 69;
+      const pitchClass = Math.round(midi) % 12;
+      if (pitchClass >= 0 && pitchClass < 12) {
+        chroma[pitchClass] += spectrum[j];
+      }
+    }
+    features.chromagram.push(chroma);
+
+    const mfcc = this._simpleMFCC(spectrum, sampleRate, 13);
+    features.mfcc.push(mfcc);
+  }
+
+  _fft(signal) {
+    const n = signal.length;
+    const windowed = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      windowed[i] = signal[i] * 0.5 * (1 - Math.cos(2 * Math.PI * i / (n - 1)));
+    }
+
+    const real = new Float32Array(n);
+    const imag = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      real[i] = windowed[i];
+      imag[i] = 0;
+    }
+
+    this._fftInPlace(real, imag, n);
+
+    const halfN = n / 2;
+    const magnitude = new Float32Array(halfN);
+    for (let i = 0; i < halfN; i++) {
+      magnitude[i] = Math.sqrt(real[i] * real[i] + imag[i] * imag[i]) / n;
+    }
+    return magnitude;
+  }
+
+  _fftInPlace(real, imag, n) {
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      if (i < j) {
+        [real[i], real[j]] = [real[j], real[i]];
+        [imag[i], imag[j]] = [imag[j], imag[i]];
+      }
+      let m = n >> 1;
+      while (m >= 1 && j >= m) {
+        j -= m;
+        m >>= 1;
+      }
+      j += m;
+    }
+
+    for (let size = 2; size <= n; size *= 2) {
+      const halfSize = size / 2;
+      const angle = -2 * Math.PI / size;
+      const wReal = Math.cos(angle);
+      const wImag = Math.sin(angle);
+
+      for (let i = 0; i < n; i += size) {
+        let curReal = 1, curImag = 0;
+        for (let k = 0; k < halfSize; k++) {
+          const evenIdx = i + k;
+          const oddIdx = i + k + halfSize;
+          const tReal = curReal * real[oddIdx] - curImag * imag[oddIdx];
+          const tImag = curReal * imag[oddIdx] + curImag * real[oddIdx];
+          real[oddIdx] = real[evenIdx] - tReal;
+          imag[oddIdx] = imag[evenIdx] - tImag;
+          real[evenIdx] += tReal;
+          imag[evenIdx] += tImag;
+          const newCurReal = curReal * wReal - curImag * wImag;
+          curImag = curReal * wImag + curImag * wReal;
+          curReal = newCurReal;
+        }
+      }
+    }
+  }
+
+  _simpleMFCC(spectrum, sampleRate, numCoeffs) {
+    const numFilters = 26;
+    const melSpectrum = new Float32Array(numFilters);
+    const maxFreq = sampleRate / 2;
+    const melMax = 2595 * Math.log10(1 + maxFreq / 700);
+
+    for (let i = 0; i < numFilters; i++) {
+      const melLow = (melMax * i) / (numFilters + 1);
+      const melHigh = (melMax * (i + 2)) / (numFilters + 1);
+      const melCenter = (melMax * (i + 1)) / (numFilters + 1);
+      const freqLow = 700 * (Math.pow(10, melLow / 2595) - 1);
+      const freqHigh = 700 * (Math.pow(10, melHigh / 2595) - 1);
+      const freqCenter = 700 * (Math.pow(10, melCenter / 2595) - 1);
+
+      const binLow = Math.floor(freqLow / maxFreq * spectrum.length);
+      const binHigh = Math.ceil(freqHigh / maxFreq * spectrum.length);
+      const binCenter = Math.round(freqCenter / maxFreq * spectrum.length);
+
+      for (let j = binLow; j < binHigh && j < spectrum.length; j++) {
+        let weight;
+        if (j < binCenter) {
+          weight = (j - binLow) / (binCenter - binLow + 1);
+        } else {
+          weight = (binHigh - j) / (binHigh - binCenter + 1);
+        }
+        melSpectrum[i] += spectrum[j] * Math.max(0, weight);
+      }
+      melSpectrum[i] = Math.log(melSpectrum[i] + 1e-10);
+    }
+
+    const mfcc = new Array(numCoeffs);
+    for (let i = 0; i < numCoeffs; i++) {
+      let sum = 0;
+      for (let j = 0; j < numFilters; j++) {
+        sum += melSpectrum[j] * Math.cos(Math.PI * i * (j + 0.5) / numFilters);
+      }
+      mfcc[i] = sum;
+    }
+    return mfcc;
+  }
+
+  _computeHarmonicity(frame, sampleRate) {
+    const n = frame.length;
+    let energy = 0;
+    for (let i = 0; i < n; i++) energy += frame[i] * frame[i];
+    if (energy < 1e-10) return 0;
+
+    const minLag = Math.floor(sampleRate / 500);
+    const maxLag = Math.min(Math.floor(sampleRate / 50), n - 1);
+
+    let maxCorr = 0;
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let corr = 0;
+      for (let i = 0; i < n - lag; i++) {
+        corr += frame[i] * frame[i + lag];
+      }
+      corr /= energy;
+      if (corr > maxCorr) maxCorr = corr;
+    }
+    return Math.max(0, Math.min(1, maxCorr));
+  }
+
+  _computeStereoWidth(left, right) {
+    let midEnergy = 0, sideEnergy = 0;
+    for (let i = 0; i < left.length; i++) {
+      const mid = (left[i] + right[i]) / 2;
+      const side = (left[i] - right[i]) / 2;
+      midEnergy += mid * mid;
+      sideEnergy += side * side;
+    }
+    return midEnergy > 1e-10 ? Math.min(1, Math.sqrt(sideEnergy / midEnergy)) : 0;
+  }
+
+  _computePhaseCorrelation(left, right) {
+    const n = left.length;
+    let sumL = 0, sumR = 0;
+    for (let i = 0; i < n; i++) { sumL += left[i]; sumR += right[i]; }
+    const meanL = sumL / n, meanR = sumR / n;
+
+    let cov = 0, varL = 0, varR = 0;
+    for (let i = 0; i < n; i++) {
+      const dl = left[i] - meanL, dr = right[i] - meanR;
+      cov += dl * dr;
+      varL += dl * dl;
+      varR += dr * dr;
+    }
+    const denom = Math.sqrt(varL * varR);
+    return denom > 1e-10 ? cov / denom : 0;
+  }
+
+  _getMono(audioBuffer) {
+    if (audioBuffer.numberOfChannels === 1) {
+      return audioBuffer.getChannelData(0);
+    }
+    const left = audioBuffer.getChannelData(0);
+    const right = audioBuffer.getChannelData(1);
+    const mono = new Float32Array(left.length);
+    for (let i = 0; i < left.length; i++) {
+      mono[i] = (left[i] + right[i]) / 2;
+    }
+    return mono;
+  }
+
+  _computeWaveformPeaks(samples, numPeaks) {
+    const samplesPerPeak = Math.floor(samples.length / numPeaks);
+    const peaks = { min: new Float32Array(numPeaks), max: new Float32Array(numPeaks) };
+    for (let i = 0; i < numPeaks; i++) {
+      let min = Infinity, max = -Infinity;
+      const start = i * samplesPerPeak;
+      const end = Math.min(start + samplesPerPeak, samples.length);
+      for (let j = start; j < end; j++) {
+        if (samples[j] < min) min = samples[j];
+        if (samples[j] > max) max = samples[j];
+      }
+      peaks.min[i] = min;
+      peaks.max[i] = max;
+    }
+    return peaks;
+  }
+}
+
+// ============================================================
+// js/viz/viz-manager.js — Panel layout manager
+// ============================================================
+
+class VizManager {
+  constructor(state, engine) {
+    this.state = state;
+    this.engine = engine;
+    this.panels = [];
+    this.container = null;
+    this._animFrame = null;
+    this._resizeObserver = null;
+  }
+
+  init(containerId) {
+    this.container = document.getElementById(containerId);
+    this._resizeObserver = new ResizeObserver(() => this._resizeAll());
+    this._resizeObserver.observe(this.container);
+    this._startRenderLoop();
+  }
+
+  register(panel) {
+    this.panels.push(panel);
+    const wrapper = document.createElement('div');
+    wrapper.className = `viz-panel viz-panel-${panel.id}`;
+    wrapper.dataset.panelId = panel.id;
+
+    const header = document.createElement('div');
+    header.className = 'viz-panel-header';
+    header.innerHTML = `<span class="viz-panel-title">${panel.title}</span>`;
+    wrapper.appendChild(header);
+
+    const canvasContainer = document.createElement('div');
+    canvasContainer.className = 'viz-canvas-container';
+
+    const canvas = document.createElement('canvas');
+    canvas.id = `canvas-${panel.id}`;
+    canvasContainer.appendChild(canvas);
+    wrapper.appendChild(canvasContainer);
+
+    this.container.appendChild(wrapper);
+    panel.wrapper = wrapper;
+    panel.canvas = canvas;
+    panel.canvasCtx = canvas.getContext('2d');
+    this._resizeCanvas(panel);
+    if (panel.init) panel.init();
+  }
+
+  registerThreePanel(panel) {
+    this.panels.push(panel);
+    const wrapper = document.createElement('div');
+    wrapper.className = `viz-panel viz-panel-${panel.id} viz-panel-3d`;
+    wrapper.dataset.panelId = panel.id;
+
+    const header = document.createElement('div');
+    header.className = 'viz-panel-header';
+    header.innerHTML = `<span class="viz-panel-title">${panel.title}</span>`;
+    wrapper.appendChild(header);
+
+    const threeContainer = document.createElement('div');
+    threeContainer.className = 'viz-canvas-container viz-three-container';
+    threeContainer.id = `three-${panel.id}`;
+    wrapper.appendChild(threeContainer);
+
+    this.container.appendChild(wrapper);
+    panel.wrapper = wrapper;
+    panel.container = threeContainer;
+    if (panel.init) panel.init(threeContainer);
+  }
+
+  _resizeCanvas(panel) {
+    if (!panel.canvas) return;
+    const container = panel.canvas.parentElement;
+    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    panel.canvas.width = rect.width * dpr;
+    panel.canvas.height = rect.height * dpr;
+    panel.canvas.style.width = rect.width + 'px';
+    panel.canvas.style.height = rect.height + 'px';
+    panel.canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    panel.displayWidth = rect.width;
+    panel.displayHeight = rect.height;
+  }
+
+  _resizeAll() {
+    for (const panel of this.panels) {
+      if (panel.canvas) {
+        this._resizeCanvas(panel);
+      }
+      if (panel.resize) panel.resize();
+    }
+  }
+
+  _startRenderLoop() {
+    const render = () => {
+      const features = this.state.get('features');
+      const currentTime = this.state.get('currentTime');
+      const duration = this.state.get('duration');
+      const selection = this.state.get('selection');
+      const zoom = this.state.get('zoomLevel');
+      const scroll = this.state.get('scrollOffset');
+      const isPlaying = this.state.get('isPlaying');
+
+      const ctx = {
+        features, currentTime, duration, selection, zoom, scroll, isPlaying,
+        analyserData: isPlaying ? this.engine.getAnalyserData() : null,
+        timeDomainData: isPlaying ? this.engine.getTimeDomainData() : null,
+      };
+
+      for (const panel of this.panels) {
+        if (panel.wrapper && panel.wrapper.offsetParent === null) continue;
+        if (panel.render) {
+          panel.render(ctx);
+        }
+      }
+      this._animFrame = requestAnimationFrame(render);
+    };
+    this._animFrame = requestAnimationFrame(render);
+  }
+
+  destroy() {
+    if (this._animFrame) cancelAnimationFrame(this._animFrame);
+    if (this._resizeObserver) this._resizeObserver.disconnect();
+  }
+}
+
+// ============================================================
+// js/viz/base-panel.js — Base class for 2D canvas panels
+// ============================================================
+
+class BasePanel {
+  constructor(id, title, state) {
+    this.id = id;
+    this.title = title;
+    this.state = state;
+    this.canvas = null;
+    this.canvasCtx = null;
+    this.wrapper = null;
+    this.displayWidth = 0;
+    this.displayHeight = 0;
+  }
+
+  init() {}
+  resize() {}
+  render(ctx) {}
+
+  clear() {
+    if (!this.canvasCtx) return;
+    this.canvasCtx.fillStyle = '#1a1a2e';
+    this.canvasCtx.fillRect(0, 0, this.displayWidth, this.displayHeight);
+  }
+
+  drawNoData() {
+    this.clear();
+    this.canvasCtx.fillStyle = '#555';
+    this.canvasCtx.font = '14px "Inter", sans-serif';
+    this.canvasCtx.textAlign = 'center';
+    this.canvasCtx.fillText('No audio loaded', this.displayWidth / 2, this.displayHeight / 2);
+  }
+
+  drawCursor(ctx) {
+    if (!ctx.duration) return;
+    const x = (ctx.currentTime / ctx.duration) * this.displayWidth;
+    this.canvasCtx.strokeStyle = '#ff4444';
+    this.canvasCtx.lineWidth = 1.5;
+    this.canvasCtx.beginPath();
+    this.canvasCtx.moveTo(x, 0);
+    this.canvasCtx.lineTo(x, this.displayHeight);
+    this.canvasCtx.stroke();
+  }
+
+  drawSelection(ctx) {
+    if (!ctx.selection || !ctx.duration) return;
+    const x1 = (ctx.selection.start / ctx.duration) * this.displayWidth;
+    const x2 = (ctx.selection.end / ctx.duration) * this.displayWidth;
+    this.canvasCtx.fillStyle = 'rgba(66, 135, 245, 0.2)';
+    this.canvasCtx.fillRect(x1, 0, x2 - x1, this.displayHeight);
+    this.canvasCtx.strokeStyle = 'rgba(66, 135, 245, 0.6)';
+    this.canvasCtx.lineWidth = 1;
+    this.canvasCtx.beginPath();
+    this.canvasCtx.moveTo(x1, 0); this.canvasCtx.lineTo(x1, this.displayHeight);
+    this.canvasCtx.moveTo(x2, 0); this.canvasCtx.lineTo(x2, this.displayHeight);
+    this.canvasCtx.stroke();
+  }
+
+  drawTimeAxis(duration) {
+    if (!duration) return;
+    const c = this.canvasCtx;
+    c.fillStyle = '#888';
+    c.font = '10px "Inter", sans-serif';
+    c.textAlign = 'center';
+    const numLabels = Math.min(10, Math.floor(this.displayWidth / 80));
+    for (let i = 0; i <= numLabels; i++) {
+      const t = (i / numLabels) * duration;
+      const x = (i / numLabels) * this.displayWidth;
+      c.fillText(this._formatTime(t), x, this.displayHeight - 2);
+    }
+  }
+
+  drawYLabel(label) {
+    const c = this.canvasCtx;
+    c.save();
+    c.fillStyle = '#888';
+    c.font = '10px "Inter", sans-serif';
+    c.translate(10, this.displayHeight / 2);
+    c.rotate(-Math.PI / 2);
+    c.textAlign = 'center';
+    c.fillText(label, 0, 0);
+    c.restore();
+  }
+
+  _formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = (s % 60).toFixed(1);
+    return `${m}:${sec.padStart(4, '0')}`;
+  }
+}
+
+// Time-series line chart panel
+class LineChartPanel extends BasePanel {
+  constructor(id, title, state, featureKey, color, yLabel, options = {}) {
+    super(id, title, state);
+    this.featureKey = featureKey;
+    this.color = color;
+    this.yLabel = yLabel;
+    this.normalize = options.normalize !== false;
+    this.logScale = options.logScale || false;
+  }
+
+  render(ctx) {
+    if (!ctx.features || !ctx.features[this.featureKey]) {
+      this.drawNoData();
+      return;
+    }
+    this.clear();
+
+    const data = ctx.features[this.featureKey];
+    const c = this.canvasCtx;
+    const w = this.displayWidth;
+    const h = this.displayHeight;
+    const margin = { top: 5, bottom: 15, left: 20, right: 5 };
+    const plotW = w - margin.left - margin.right;
+    const plotH = h - margin.top - margin.bottom;
+
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] < min) min = data[i];
+      if (data[i] > max) max = data[i];
+    }
+    if (min === max) { min -= 1; max += 1; }
+
+    c.strokeStyle = this.color;
+    c.lineWidth = 1.2;
+    c.beginPath();
+
+    const step = Math.max(1, Math.floor(data.length / plotW));
+    for (let px = 0; px < plotW; px++) {
+      const idx = Math.floor((px / plotW) * data.length);
+      const val = data[idx];
+      const y = margin.top + plotH - ((val - min) / (max - min)) * plotH;
+      if (px === 0) c.moveTo(margin.left + px, y);
+      else c.lineTo(margin.left + px, y);
+    }
+    c.stroke();
+
+    c.lineTo(margin.left + plotW, margin.top + plotH);
+    c.lineTo(margin.left, margin.top + plotH);
+    c.closePath();
+    c.fillStyle = this.color.replace(')', ', 0.15)').replace('rgb', 'rgba');
+    c.fill();
+
+    this.drawTimeAxis(ctx.duration);
+    this.drawYLabel(this.yLabel);
+    this.drawSelection(ctx);
+    this.drawCursor(ctx);
+  }
+}
+
+// Heatmap panel (for spectrogram, chromagram, MFCC)
+class HeatmapPanel extends BasePanel {
+  constructor(id, title, state, featureKey, yLabels, colorMap, options = {}) {
+    super(id, title, state);
+    this.featureKey = featureKey;
+    this.yLabels = yLabels;
+    this.colorMap = colorMap || 'viridis';
+    this.logScale = options.logScale || false;
+    this._imageData = null;
+    this._lastLength = 0;
+  }
+
+  render(ctx) {
+    if (!ctx.features || !ctx.features[this.featureKey] || ctx.features[this.featureKey].length === 0) {
+      this.drawNoData();
+      return;
+    }
+    this.clear();
+
+    const data = ctx.features[this.featureKey];
+    const c = this.canvasCtx;
+    const w = this.displayWidth;
+    const h = this.displayHeight;
+    const margin = { top: 2, bottom: 15, left: 5, right: 5 };
+    const plotW = w - margin.left - margin.right;
+    const plotH = h - margin.top - margin.bottom;
+
+    const numBins = data[0].length;
+    const numFrames = data.length;
+
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < numFrames; i++) {
+      for (let j = 0; j < numBins; j++) {
+        let v = data[i][j];
+        if (this.logScale) v = Math.log10(v + 1e-10);
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+    if (min === max) { min -= 1; max += 1; }
+
+    const cellW = plotW / numFrames;
+    const cellH = plotH / numBins;
+
+    const stepX = Math.max(1, Math.floor(numFrames / plotW));
+    for (let px = 0; px < plotW; px++) {
+      const frameIdx = Math.floor((px / plotW) * numFrames);
+      for (let py = 0; py < plotH; py++) {
+        const binIdx = numBins - 1 - Math.floor((py / plotH) * numBins);
+        let v = data[frameIdx][binIdx];
+        if (this.logScale) v = Math.log10(v + 1e-10);
+        const norm = (v - min) / (max - min);
+        const color = this._getColor(norm);
+        c.fillStyle = color;
+        c.fillRect(margin.left + px, margin.top + py, 1, 1);
+      }
+    }
+
+    this.drawTimeAxis(ctx.duration);
+    this.drawSelection(ctx);
+    this.drawCursor(ctx);
+  }
+
+  _getColor(t) {
+    t = Math.max(0, Math.min(1, t));
+    if (this.colorMap === 'viridis') {
+      const r = Math.round(68 + t * (253 - 68));
+      const g = Math.round(1 + t * (231 - 1));
+      const b = Math.round(84 + (1 - Math.abs(t - 0.5) * 2) * (150 - 84));
+      return `rgb(${r},${g},${b})`;
+    } else if (this.colorMap === 'magma') {
+      const r = Math.round(t * 255);
+      const g = Math.round(t * t * 180);
+      const b = Math.round(80 + t * 175);
+      return `rgb(${r},${g},${b})`;
+    } else if (this.colorMap === 'inferno') {
+      const r = Math.round(t * 250);
+      const g = Math.round(t * t * 200);
+      const b = Math.round(30 + (1 - t) * 100 + t * 50);
+      return `rgb(${r},${g},${b})`;
+    }
+    const r = Math.round(Math.min(255, t * 510));
+    const g = Math.round(Math.max(0, (t - 0.4) * 425));
+    const b = Math.round(Math.max(0, (t - 0.7) * 850));
+    return `rgb(${r},${g},${b})`;
+  }
+}
+
+// ============================================================
+// js/viz/waveform.js — Waveform with interactive selection
+// ============================================================
+
+class WaveformPanel extends BasePanel {
+  constructor(state, engine) {
+    super('waveform', 'Waveform', state);
+    this.engine = engine;
+    this._isDragging = false;
+    this._dragStart = 0;
+  }
+
+  init() {
+    this.canvas.addEventListener('mousedown', (e) => this._onMouseDown(e));
+    this.canvas.addEventListener('mousemove', (e) => this._onMouseMove(e));
+    this.canvas.addEventListener('mouseup', (e) => this._onMouseUp(e));
+    this.canvas.addEventListener('dblclick', (e) => this._onDblClick(e));
+  }
+
+  render(ctx) {
+    if (!ctx.features || !ctx.features.waveformPeaks) {
+      this.drawNoData();
+      return;
+    }
+    this.clear();
+
+    const peaks = ctx.features.waveformPeaks;
+    const c = this.canvasCtx;
+    const w = this.displayWidth;
+    const h = this.displayHeight;
+    const midY = h / 2;
+
+    const gradient = c.createLinearGradient(0, 0, 0, h);
+    gradient.addColorStop(0, '#4287f5');
+    gradient.addColorStop(0.5, '#42f5a7');
+    gradient.addColorStop(1, '#4287f5');
+
+    c.fillStyle = gradient;
+    const numPeaks = peaks.min.length;
+    const barW = w / numPeaks;
+
+    for (let i = 0; i < numPeaks; i++) {
+      const x = (i / numPeaks) * w;
+      const minY = midY + peaks.min[i] * midY;
+      const maxY = midY + peaks.max[i] * midY;
+      c.fillRect(x, maxY, Math.max(1, barW), minY - maxY);
+    }
+
+    c.strokeStyle = 'rgba(255,255,255,0.1)';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(0, midY);
+    c.lineTo(w, midY);
+    c.stroke();
+
+    this.drawTimeAxis(ctx.duration);
+    this.drawSelection(ctx);
+    this.drawCursor(ctx);
+  }
+
+  _xToTime(x) {
+    const rect = this.canvas.getBoundingClientRect();
+    const relX = (x - rect.left) / rect.width;
+    return relX * this.state.get('duration');
+  }
+
+  _onMouseDown(e) {
+    this._isDragging = true;
+    this._dragStart = this._xToTime(e.clientX);
+    this.state.set('selection', null);
+  }
+
+  _onMouseMove(e) {
+    if (!this._isDragging) return;
+    const t = this._xToTime(e.clientX);
+    const start = Math.min(this._dragStart, t);
+    const end = Math.max(this._dragStart, t);
+    if (end - start > 0.01) {
+      this.state.set('selection', { start, end });
+    }
+  }
+
+  _onMouseUp(e) {
+    if (!this._isDragging) return;
+    this._isDragging = false;
+    const t = this._xToTime(e.clientX);
+    if (Math.abs(t - this._dragStart) < 0.01) {
+      this.state.set('selection', null);
+      this.engine.seek(t);
+    }
+  }
+
+  _onDblClick(e) {
+    this.state.set('selection', null);
+  }
+}
+
+// ============================================================
+// js/viz/spectrum.js — Real-time frequency spectrum
+// ============================================================
+
+class SpectrumPanel extends BasePanel {
+  constructor(state) {
+    super('spectrum', 'Frequency Spectrum', state);
+  }
+
+  render(ctx) {
+    this.clear();
+    const c = this.canvasCtx;
+    const w = this.displayWidth;
+    const h = this.displayHeight;
+
+    if (ctx.analyserData && ctx.isPlaying) {
+      const data = ctx.analyserData;
+      const barCount = Math.min(data.length, Math.floor(w / 2));
+      const barW = w / barCount;
+
+      for (let i = 0; i < barCount; i++) {
+        const val = (data[i] + 100) / 100;
+        const barH = Math.max(0, val) * h;
+        const hue = (i / barCount) * 280;
+        c.fillStyle = `hsl(${hue}, 80%, 55%)`;
+        c.fillRect(i * barW, h - barH, barW - 1, barH);
+      }
+    } else if (ctx.features && ctx.features.spectrogram && ctx.features.spectrogram.length > 0) {
+      const frameIdx = Math.floor((ctx.currentTime / ctx.duration) * ctx.features.spectrogram.length);
+      const frame = ctx.features.spectrogram[Math.min(frameIdx, ctx.features.spectrogram.length - 1)];
+      if (frame) {
+        const barCount = Math.min(frame.length, Math.floor(w / 2));
+        const barW = w / barCount;
+
+        let max = 0;
+        for (let i = 0; i < frame.length; i++) if (frame[i] > max) max = frame[i];
+        if (max === 0) max = 1;
+
+        for (let i = 0; i < barCount; i++) {
+          const idx = Math.floor((i / barCount) * frame.length);
+          const val = frame[idx] / max;
+          const barH = val * (h - 15);
+          const hue = (i / barCount) * 280;
+          c.fillStyle = `hsl(${hue}, 80%, 55%)`;
+          c.fillRect(i * barW, h - 15 - barH, barW - 1, barH);
+        }
+      }
+    } else {
+      this.drawNoData();
+      return;
+    }
+
+    c.fillStyle = '#888';
+    c.font = '10px "Inter", sans-serif';
+    c.textAlign = 'center';
+    const sr = this.state.get('sampleRate') || 44100;
+    const labels = [100, 500, 1000, 5000, 10000, 20000].filter(f => f <= sr / 2);
+    for (const freq of labels) {
+      const x = (freq / (sr / 2)) * w;
+      const label = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
+      c.fillText(label, x, h - 2);
+    }
+  }
+}
+
+// ============================================================
+// js/viz/scene3d.js — 3D visualization using Three.js
+// ============================================================
+
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+class Scene3DPanel {
+  constructor(state) {
+    this.id = 'scene3d';
+    this.title = '3D Sound Landscape';
+    this.state = state;
+    this.scene = null;
+    this.camera = null;
+    this.renderer = null;
+    this.controls = null;
+    this.container = null;
+    this.wrapper = null;
+    this.mesh = null;
+    this.pointCloud = null;
+    this._needsUpdate = true;
+    this._animFrame = null;
+
+    state.on('features', () => { this._needsUpdate = true; });
+  }
+
+  init(container) {
+    this.container = container;
+    const w = container.clientWidth;
+    const h = container.clientHeight || 300;
+
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a1a);
+    this.scene.fog = new THREE.Fog(0x0a0a1a, 50, 200);
+
+    this.camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 500);
+    this.camera.position.set(30, 20, 30);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setSize(w, h);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(this.renderer.domElement);
+
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.05;
+    this.controls.target.set(15, 5, 15);
+
+    const ambient = new THREE.AmbientLight(0x404060, 0.5);
+    this.scene.add(ambient);
+    const dir = new THREE.DirectionalLight(0xffffff, 1);
+    dir.position.set(20, 40, 20);
+    this.scene.add(dir);
+
+    const grid = new THREE.GridHelper(60, 60, 0x222244, 0x111133);
+    this.scene.add(grid);
+
+    const axes = new THREE.AxesHelper(5);
+    this.scene.add(axes);
+
+    this._animate();
+  }
+
+  render(ctx) {
+    if (!this._needsUpdate || !ctx.features || !ctx.features.spectrogram || ctx.features.spectrogram.length === 0) return;
+    this._needsUpdate = false;
+    this._buildTerrain(ctx.features);
+  }
+
+  resize() {
+    if (!this.container || !this.renderer) return;
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight || 300;
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h);
+  }
+
+  _buildTerrain(features) {
+    if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose(); }
+    if (this.pointCloud) { this.scene.remove(this.pointCloud); this.pointCloud.geometry.dispose(); this.pointCloud.material.dispose(); }
+
+    const spec = features.spectrogram;
+    const maxFrames = 200;
+    const maxBins = 100;
+    const frameStep = Math.max(1, Math.floor(spec.length / maxFrames));
+    const binStep = Math.max(1, Math.floor(spec[0].length / maxBins));
+
+    const numX = Math.min(maxFrames, spec.length);
+    const numZ = Math.min(maxBins, spec[0].length);
+
+    const geometry = new THREE.PlaneGeometry(60, 30, numX - 1, numZ - 1);
+    geometry.rotateX(-Math.PI / 2);
+
+    const positions = geometry.attributes.position.array;
+    const colors = new Float32Array(positions.length);
+
+    let maxVal = 0;
+    for (let i = 0; i < spec.length; i += frameStep) {
+      for (let j = 0; j < spec[i].length; j += binStep) {
+        const v = Math.log10(spec[i][j] + 1e-6) + 6;
+        if (v > maxVal) maxVal = v;
+      }
+    }
+    if (maxVal === 0) maxVal = 1;
+
+    for (let iz = 0; iz < numZ; iz++) {
+      for (let ix = 0; ix < numX; ix++) {
+        const idx = iz * numX + ix;
+        const frameIdx = Math.min(ix * frameStep, spec.length - 1);
+        const binIdx = Math.min(iz * binStep, spec[frameIdx].length - 1);
+
+        let val = Math.log10(spec[frameIdx][binIdx] + 1e-6) + 6;
+        val = Math.max(0, val) / maxVal;
+
+        positions[idx * 3 + 1] = val * 15;
+
+        const centroid = features.spectralCentroid[frameIdx] || 0;
+        const maxCentroid = features.sampleRate / 4;
+        const hue = (centroid / maxCentroid) * 0.7;
+
+        const color = new THREE.Color();
+        color.setHSL(hue, 0.8, 0.2 + val * 0.6);
+        colors[idx * 3] = color.r;
+        colors[idx * 3 + 1] = color.g;
+        colors[idx * 3 + 2] = color.b;
+      }
+    }
+
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshPhongMaterial({
+      vertexColors: true,
+      shininess: 30,
+      side: THREE.DoubleSide,
+      wireframe: false,
+    });
+
+    this.mesh = new THREE.Mesh(geometry, material);
+    this.scene.add(this.mesh);
+
+    const wireMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      wireframe: true,
+      opacity: 0.05,
+      transparent: true,
+    });
+    const wireMesh = new THREE.Mesh(geometry.clone(), wireMaterial);
+    wireMesh.position.y = 0.01;
+    this.mesh.add(wireMesh);
+  }
+
+  _animate() {
+    const loop = () => {
+      this._animFrame = requestAnimationFrame(loop);
+      if (this.controls) this.controls.update();
+      if (this.renderer && this.scene && this.camera) {
+        this.renderer.render(this.scene, this.camera);
+      }
+    };
+    loop();
+  }
+
+  destroy() {
+    if (this._animFrame) cancelAnimationFrame(this._animFrame);
+    if (this.renderer) this.renderer.dispose();
+  }
+}
+
+// ============================================================
+// js/editor/editor.js — Audio editing
+// ============================================================
+
+class AudioEditor {
+  constructor(state, engine) {
+    this.state = state;
+    this.engine = engine;
+  }
+
+  crop() {
+    const sel = this.state.get('selection');
+    const buffer = this.state.get('audioBuffer');
+    if (!sel || !buffer) return null;
+
+    const startSample = Math.floor(sel.start * buffer.sampleRate);
+    const endSample = Math.floor(sel.end * buffer.sampleRate);
+    const length = endSample - startSample;
+
+    const ctx = this.engine.ctx;
+    const newBuffer = ctx.createBuffer(
+      buffer.numberOfChannels,
+      length,
+      buffer.sampleRate
+    );
+
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = newBuffer.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        dst[i] = src[startSample + i];
+      }
+    }
+
+    return newBuffer;
+  }
+
+  deleteSelection() {
+    const sel = this.state.get('selection');
+    const buffer = this.state.get('audioBuffer');
+    if (!sel || !buffer) return null;
+
+    const startSample = Math.floor(sel.start * buffer.sampleRate);
+    const endSample = Math.floor(sel.end * buffer.sampleRate);
+    const newLength = buffer.length - (endSample - startSample);
+
+    const ctx = this.engine.ctx;
+    const newBuffer = ctx.createBuffer(
+      buffer.numberOfChannels,
+      newLength,
+      buffer.sampleRate
+    );
+
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = newBuffer.getChannelData(ch);
+      let di = 0;
+      for (let i = 0; i < startSample; i++) dst[di++] = src[i];
+      for (let i = endSample; i < buffer.length; i++) dst[di++] = src[i];
+    }
+
+    return newBuffer;
+  }
+
+  async separateHarmonicPercussive(audioBuffer) {
+    const sampleRate = audioBuffer.sampleRate;
+    const mono = this._getMono(audioBuffer);
+    const fftSize = 2048;
+    const hopSize = 512;
+
+    const { magnitude, phase, numFrames, numBins } = this._stft(mono, fftSize, hopSize);
+
+    const harmonicKernelSize = 17;
+    const percussiveKernelSize = 17;
+
+    const harmonicMag = new Float32Array(magnitude.length);
+    const percussiveMag = new Float32Array(magnitude.length);
+
+    for (let t = 0; t < numFrames; t++) {
+      for (let f = 0; f < numBins; f++) {
+        const values = [];
+        const half = Math.floor(harmonicKernelSize / 2);
+        for (let df = -half; df <= half; df++) {
+          const ff = Math.max(0, Math.min(numBins - 1, f + df));
+          values.push(magnitude[t * numBins + ff]);
+        }
+        values.sort((a, b) => a - b);
+        harmonicMag[t * numBins + f] = values[Math.floor(values.length / 2)];
+      }
+    }
+
+    for (let f = 0; f < numBins; f++) {
+      for (let t = 0; t < numFrames; t++) {
+        const values = [];
+        const half = Math.floor(percussiveKernelSize / 2);
+        for (let dt = -half; dt <= half; dt++) {
+          const tt = Math.max(0, Math.min(numFrames - 1, t + dt));
+          values.push(magnitude[tt * numBins + f]);
+        }
+        values.sort((a, b) => a - b);
+        percussiveMag[t * numBins + f] = values[Math.floor(values.length / 2)];
+      }
+    }
+
+    const harmonicSpec = new Float32Array(magnitude.length);
+    const percussiveSpec = new Float32Array(magnitude.length);
+
+    for (let i = 0; i < magnitude.length; i++) {
+      const h = harmonicMag[i];
+      const p = percussiveMag[i];
+      const total = h + p + 1e-10;
+      harmonicSpec[i] = magnitude[i] * (h / total);
+      percussiveSpec[i] = magnitude[i] * (p / total);
+    }
+
+    const harmonicAudio = this._istft(harmonicSpec, phase, numFrames, numBins, fftSize, hopSize, mono.length);
+    const percussiveAudio = this._istft(percussiveSpec, phase, numFrames, numBins, fftSize, hopSize, mono.length);
+
+    const ctx = this.engine.ctx;
+    const harmonicBuffer = ctx.createBuffer(1, harmonicAudio.length, sampleRate);
+    harmonicBuffer.getChannelData(0).set(harmonicAudio);
+
+    const percussiveBuffer = ctx.createBuffer(1, percussiveAudio.length, sampleRate);
+    percussiveBuffer.getChannelData(0).set(percussiveAudio);
+
+    return { harmonic: harmonicBuffer, percussive: percussiveBuffer };
+  }
+
+  async denoiseSpectralGate(audioBuffer, threshold = 0.02) {
+    const sampleRate = audioBuffer.sampleRate;
+    const mono = this._getMono(audioBuffer);
+    const fftSize = 2048;
+    const hopSize = 512;
+
+    const { magnitude, phase, numFrames, numBins } = this._stft(mono, fftSize, hopSize);
+
+    const gated = new Float32Array(magnitude.length);
+    let maxMag = 0;
+    for (let i = 0; i < magnitude.length; i++) if (magnitude[i] > maxMag) maxMag = magnitude[i];
+
+    const absThreshold = threshold * maxMag;
+    for (let i = 0; i < magnitude.length; i++) {
+      gated[i] = magnitude[i] > absThreshold ? magnitude[i] : magnitude[i] * 0.1;
+    }
+
+    const result = this._istft(gated, phase, numFrames, numBins, fftSize, hopSize, mono.length);
+    const ctx = this.engine.ctx;
+    const outBuffer = ctx.createBuffer(1, result.length, sampleRate);
+    outBuffer.getChannelData(0).set(result);
+    return outBuffer;
+  }
+
+  _stft(signal, fftSize, hopSize) {
+    const numFrames = Math.floor((signal.length - fftSize) / hopSize) + 1;
+    const numBins = fftSize / 2 + 1;
+    const magnitude = new Float32Array(numFrames * numBins);
+    const phase = new Float32Array(numFrames * numBins);
+    const window = new Float32Array(fftSize);
+
+    for (let i = 0; i < fftSize; i++) {
+      window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (fftSize - 1)));
+    }
+
+    for (let t = 0; t < numFrames; t++) {
+      const offset = t * hopSize;
+      const real = new Float32Array(fftSize);
+      const imag = new Float32Array(fftSize);
+
+      for (let i = 0; i < fftSize; i++) {
+        real[i] = signal[offset + i] * window[i];
+      }
+
+      this._fftInPlace(real, imag, fftSize);
+
+      for (let f = 0; f < numBins; f++) {
+        const idx = t * numBins + f;
+        magnitude[idx] = Math.sqrt(real[f] * real[f] + imag[f] * imag[f]);
+        phase[idx] = Math.atan2(imag[f], real[f]);
+      }
+    }
+
+    return { magnitude, phase, numFrames, numBins };
+  }
+
+  _istft(magnitude, phase, numFrames, numBins, fftSize, hopSize, outputLength) {
+    const output = new Float32Array(outputLength);
+    const windowSum = new Float32Array(outputLength);
+    const window = new Float32Array(fftSize);
+
+    for (let i = 0; i < fftSize; i++) {
+      window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (fftSize - 1)));
+    }
+
+    for (let t = 0; t < numFrames; t++) {
+      const real = new Float32Array(fftSize);
+      const imag = new Float32Array(fftSize);
+
+      for (let f = 0; f < numBins; f++) {
+        const idx = t * numBins + f;
+        real[f] = magnitude[idx] * Math.cos(phase[idx]);
+        imag[f] = magnitude[idx] * Math.sin(phase[idx]);
+      }
+      for (let f = 1; f < numBins - 1; f++) {
+        real[fftSize - f] = real[f];
+        imag[fftSize - f] = -imag[f];
+      }
+
+      this._ifftInPlace(real, imag, fftSize);
+
+      const offset = t * hopSize;
+      for (let i = 0; i < fftSize && offset + i < outputLength; i++) {
+        output[offset + i] += real[i] * window[i];
+        windowSum[offset + i] += window[i] * window[i];
+      }
+    }
+
+    for (let i = 0; i < outputLength; i++) {
+      if (windowSum[i] > 1e-8) output[i] /= windowSum[i];
+    }
+
+    return output;
+  }
+
+  _fftInPlace(real, imag, n) {
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      if (i < j) {
+        [real[i], real[j]] = [real[j], real[i]];
+        [imag[i], imag[j]] = [imag[j], imag[i]];
+      }
+      let m = n >> 1;
+      while (m >= 1 && j >= m) { j -= m; m >>= 1; }
+      j += m;
+    }
+    for (let size = 2; size <= n; size *= 2) {
+      const halfSize = size / 2;
+      const angle = -2 * Math.PI / size;
+      const wR = Math.cos(angle), wI = Math.sin(angle);
+      for (let i = 0; i < n; i += size) {
+        let cR = 1, cI = 0;
+        for (let k = 0; k < halfSize; k++) {
+          const e = i + k, o = i + k + halfSize;
+          const tR = cR * real[o] - cI * imag[o];
+          const tI = cR * imag[o] + cI * real[o];
+          real[o] = real[e] - tR; imag[o] = imag[e] - tI;
+          real[e] += tR; imag[e] += tI;
+          const newCR = cR * wR - cI * wI;
+          cI = cR * wI + cI * wR; cR = newCR;
+        }
+      }
+    }
+  }
+
+  _ifftInPlace(real, imag, n) {
+    for (let i = 0; i < n; i++) imag[i] = -imag[i];
+    this._fftInPlace(real, imag, n);
+    for (let i = 0; i < n; i++) { real[i] /= n; imag[i] = -imag[i] / n; }
+  }
+
+  _getMono(audioBuffer) {
+    if (audioBuffer.numberOfChannels === 1) return audioBuffer.getChannelData(0);
+    const l = audioBuffer.getChannelData(0);
+    const r = audioBuffer.getChannelData(1);
+    const mono = new Float32Array(l.length);
+    for (let i = 0; i < l.length; i++) mono[i] = (l[i] + r[i]) / 2;
+    return mono;
+  }
+}
+
+// ============================================================
+// js/editor/export.js — WAV encoding and download
+// ============================================================
+
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+class AudioExporter {
+  static exportWAV(audioBuffer, filename = 'audio.wav') {
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const bitsPerSample = 16;
+    const length = audioBuffer.length;
+
+    const interleaved = new Float32Array(length * numChannels);
+    for (let ch = 0; ch < numChannels; ch++) {
+      const channelData = audioBuffer.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        interleaved[i * numChannels + ch] = channelData[i];
+      }
+    }
+
+    const dataLength = interleaved.length * 2;
+    const buffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(buffer);
+
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataLength, true);
+    writeString(view, 8, 'WAVE');
+
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * 2, true);
+    view.setUint16(32, numChannels * 2, true);
+    view.setUint16(34, bitsPerSample, true);
+
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataLength, true);
+
+    let offset = 44;
+    for (let i = 0; i < interleaved.length; i++) {
+      const s = Math.max(-1, Math.min(1, interleaved[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    downloadBlob(blob, filename);
+  }
+}
+
+// ============================================================
+// js/app.js — Main application controller
+// ============================================================
+
+class App {
+  constructor() {
+    this.state = new AppState();
+    this.engine = new AudioEngine(this.state);
+    this.extractor = new FeatureExtractor(this.state);
+    this.vizManager = new VizManager(this.state, this.engine);
+    this.editor = new AudioEditor(this.state, this.engine);
+
+    this._initUI();
+    this._initViz();
+    this._bindEvents();
+    this._bindKeyboard();
+  }
+
+  _initUI() {
+    const fileInput = document.getElementById('file-input');
+    const dropZone = document.getElementById('drop-zone');
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) this._loadFile(e.target.files[0]);
+    });
+
+    document.body.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('active');
+    });
+    document.body.addEventListener('dragleave', () => {
+      dropZone.classList.remove('active');
+    });
+    document.body.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('active');
+      if (e.dataTransfer.files[0]) this._loadFile(e.dataTransfer.files[0]);
+    });
+
+    document.getElementById('btn-play').addEventListener('click', () => this._togglePlay());
+    document.getElementById('btn-stop').addEventListener('click', () => this.engine.stop());
+    document.getElementById('btn-skip-back').addEventListener('click', () => this.engine.seek(0));
+
+    document.getElementById('volume-slider').addEventListener('input', (e) => {
+      this.engine.setVolume(parseFloat(e.target.value));
+    });
+
+    document.getElementById('btn-crop').addEventListener('click', () => this._cropToSelection());
+    document.getElementById('btn-delete-sel').addEventListener('click', () => this._deleteSelection());
+    document.getElementById('btn-export').addEventListener('click', () => this._exportWAV());
+    document.getElementById('btn-separate').addEventListener('click', () => this._separate());
+    document.getElementById('btn-denoise').addEventListener('click', () => this._denoise());
+
+    this.state.on('currentTime', (t) => {
+      document.getElementById('time-current').textContent = this._formatTime(t);
+    });
+    this.state.on('duration', (d) => {
+      document.getElementById('time-total').textContent = this._formatTime(d);
+    });
+    this.state.on('fileName', (name) => {
+      document.getElementById('file-name').textContent = name || 'No file loaded';
+    });
+    this.state.on('extractionProgress', (p) => {
+      const bar = document.getElementById('progress-bar');
+      const container = document.getElementById('progress-container');
+      if (p > 0 && p < 100) {
+        container.style.display = 'block';
+        bar.style.width = p + '%';
+      } else {
+        container.style.display = 'none';
+      }
+    });
+    this.state.on('selection', (sel) => {
+      const info = document.getElementById('selection-info');
+      if (sel) {
+        const dur = (sel.end - sel.start).toFixed(2);
+        info.textContent = `Selected: ${this._formatTime(sel.start)} - ${this._formatTime(sel.end)} (${dur}s)`;
+        info.style.display = 'inline-block';
+      } else {
+        info.style.display = 'none';
+      }
+    });
+  }
+
+  _initViz() {
+    this.vizManager.init('viz-container');
+
+    this.vizManager.register(new WaveformPanel(this.state, this.engine));
+    this.vizManager.register(new SpectrumPanel(this.state));
+    this.vizManager.register(new HeatmapPanel('spectrogram', 'Spectrogram', this.state,
+      'spectrogram', null, 'inferno', { logScale: true }));
+
+    this.vizManager.register(new LineChartPanel('spectral-centroid', 'Spectral Centroid', this.state,
+      'spectralCentroid', 'rgb(255, 170, 50)', 'Hz'));
+    this.vizManager.register(new LineChartPanel('spectral-bandwidth', 'Spectral Bandwidth', this.state,
+      'spectralBandwidth', 'rgb(130, 220, 255)', 'Hz'));
+    this.vizManager.register(new LineChartPanel('spectral-rolloff', 'Spectral Rolloff', this.state,
+      'spectralRolloff', 'rgb(255, 100, 200)', 'Hz'));
+    this.vizManager.register(new LineChartPanel('spectral-flux', 'Spectral Flux', this.state,
+      'spectralFlux', 'rgb(100, 255, 150)', 'Flux'));
+    this.vizManager.register(new LineChartPanel('zcr', 'Zero-Crossing Rate', this.state,
+      'zcr', 'rgb(255, 255, 100)', 'Rate'));
+    this.vizManager.register(new LineChartPanel('harmonicity', 'Harmonicity', this.state,
+      'harmonicity', 'rgb(180, 130, 255)', 'Score'));
+    this.vizManager.register(new LineChartPanel('loudness', 'Loudness', this.state,
+      'loudness', 'rgb(255, 80, 80)', 'dB'));
+    this.vizManager.register(new LineChartPanel('rms', 'RMS Energy', this.state,
+      'rms', 'rgb(50, 200, 255)', 'RMS'));
+
+    const chromaLabels = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    this.vizManager.register(new HeatmapPanel('chromagram', 'Chromagram (Pitch Classes)', this.state,
+      'chromagram', chromaLabels, 'magma'));
+    this.vizManager.register(new HeatmapPanel('mfcc', 'MFCCs', this.state,
+      'mfcc', null, 'viridis'));
+
+    this.vizManager.register(new LineChartPanel('stereo-width', 'Stereo Width', this.state,
+      'stereoWidth', 'rgb(255, 200, 50)', 'Width'));
+    this.vizManager.register(new LineChartPanel('phase-correlation', 'Phase Correlation', this.state,
+      'phaseCorrelation', 'rgb(50, 255, 200)', 'Corr'));
+
+    this.vizManager.registerThreePanel(new Scene3DPanel(this.state));
+  }
+
+  _bindEvents() {
+    // None needed beyond what _initUI sets up
+  }
+
+  _bindKeyboard() {
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          this._togglePlay();
+          break;
+        case 'Delete':
+        case 'Backspace':
+          if (this.state.get('selection')) {
+            e.preventDefault();
+            this._deleteSelection();
+          }
+          break;
+        case 'KeyE':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            this._exportWAV();
+          }
+          break;
+      }
+    });
+  }
+
+  async _loadFile(file) {
+    try {
+      document.getElementById('drop-zone').style.display = 'none';
+      document.getElementById('main-content').style.display = 'block';
+
+      await this.engine.loadFile(file);
+
+      const buffer = this.state.get('audioBuffer');
+      const features = await this.extractor.extract(buffer, (p) => {
+        // progress updates handled by state listener
+      });
+      this.state.set('features', features);
+    } catch (err) {
+      console.error('Error loading file:', err);
+      alert('Error loading audio file: ' + err.message);
+    }
+  }
+
+  _togglePlay() {
+    if (this.state.get('isPlaying')) {
+      this.engine.pause();
+    } else {
+      this.engine.play();
+    }
+  }
+
+  async _cropToSelection() {
+    const newBuffer = this.editor.crop();
+    if (!newBuffer) return;
+    await this._replaceBuffer(newBuffer);
+  }
+
+  async _deleteSelection() {
+    const newBuffer = this.editor.deleteSelection();
+    if (!newBuffer) return;
+    await this._replaceBuffer(newBuffer);
+  }
+
+  async _separate() {
+    const buffer = this.state.get('audioBuffer');
+    if (!buffer) return;
+
+    const btn = document.getElementById('btn-separate');
+    btn.disabled = true;
+    btn.textContent = 'Separating...';
+
+    try {
+      const { harmonic, percussive } = await this.editor.separateHarmonicPercussive(buffer);
+
+      const choice = prompt('Instrument separation complete!\nType "harmonic" for melodic/tonal content,\nor "percussive" for drums/transients,\nor "cancel" to abort.');
+
+      if (choice && choice.toLowerCase().startsWith('h')) {
+        await this._replaceBuffer(harmonic);
+      } else if (choice && choice.toLowerCase().startsWith('p')) {
+        await this._replaceBuffer(percussive);
+      }
+    } catch (err) {
+      console.error('Separation error:', err);
+      alert('Separation failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Separate';
+    }
+  }
+
+  async _denoise() {
+    const buffer = this.state.get('audioBuffer');
+    if (!buffer) return;
+
+    const btn = document.getElementById('btn-denoise');
+    btn.disabled = true;
+    btn.textContent = 'Denoising...';
+
+    try {
+      const threshold = parseFloat(prompt('Noise gate threshold (0.01 - 0.1, default 0.02):', '0.02')) || 0.02;
+      const denoised = await this.editor.denoiseSpectralGate(buffer, threshold);
+      await this._replaceBuffer(denoised);
+    } catch (err) {
+      console.error('Denoise error:', err);
+      alert('Denoise failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Denoise';
+    }
+  }
+
+  async _replaceBuffer(newBuffer) {
+    this.engine.stop();
+    this.state.update({
+      audioBuffer: newBuffer,
+      duration: newBuffer.duration,
+      channelCount: newBuffer.numberOfChannels,
+      sampleRate: newBuffer.sampleRate,
+      currentTime: 0,
+      selection: null,
+    });
+
+    const features = await this.extractor.extract(newBuffer);
+    this.state.set('features', features);
+  }
+
+  _exportWAV() {
+    const buffer = this.state.get('audioBuffer');
+    if (!buffer) return;
+    const name = this.state.get('fileName').replace(/\.[^.]+$/, '') || 'audio';
+    AudioExporter.exportWAV(buffer, name + '_edited.wav');
+  }
+
+  _formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  }
+}
+
+// Boot
+window.addEventListener('DOMContentLoaded', () => {
+  window.app = new App();
+});
+</script>
+
+</body>
+</html>
